@@ -20,7 +20,7 @@ import structlog
 from sqlalchemy import select
 
 from app.config import settings
-from app.database import SessionLocal
+from app.database import SessionLocal, _db_lock
 from app.models import CVESignature
 
 log = structlog.get_logger(__name__)
@@ -351,6 +351,10 @@ class CVESyncWorker:
         Uses SELECT-then-INSERT/UPDATE — dialect-agnostic, works on DuckDB.
         The DB calls are synchronous (DuckDB is in-process); running them
         directly in this async method is fine for a background worker.
+
+        Holds _db_lock for the entire batch: StaticPool shares one DuckDB
+        connection across all threads — concurrent sessions would trigger
+        "cannot start a transaction within a transaction".
         """
         if not patterns:
             return 0
@@ -360,52 +364,54 @@ class CVESyncWorker:
         # within one sync pass would otherwise cause a bulk-INSERT constraint error).
         seen_in_batch: set[str] = set()
 
-        with SessionLocal() as db:
-            for p in patterns:
-                if not p.get("pattern") or not p.get("cve_id"):
-                    continue
+        with _db_lock:
+            with SessionLocal() as db:
+                for p in patterns:
+                    if not p.get("pattern") or not p.get("cve_id"):
+                        continue
 
-                cve_id = p["cve_id"]
-                if cve_id in seen_in_batch:
-                    continue
-                seen_in_batch.add(cve_id)
+                    cve_id = p["cve_id"]
+                    if cve_id in seen_in_batch:
+                        continue
+                    seen_in_batch.add(cve_id)
 
-                # Validate regex before storing
-                try:
-                    re.compile(p["pattern"])
-                except re.error:
-                    log.warning("Invalid regex skipped", cve_id=cve_id)
-                    continue
+                    # Validate regex before storing
+                    try:
+                        re.compile(p["pattern"])
+                    except re.error:
+                        log.warning("Invalid regex skipped", cve_id=cve_id)
+                        continue
 
-                # Dialect-agnostic upsert: flush after each add so the next
-                # SELECT in the same session sees uncommitted rows correctly.
-                existing = db.execute(
-                    select(CVESignature).where(CVESignature.cve_id == cve_id)
-                ).scalar_one_or_none()
+                    # Dialect-agnostic upsert: use .scalars().first() instead of
+                    # scalar_one_or_none() — DuckDB can return duplicate rows during
+                    # an incomplete flush; scalar_one_or_none() raises MultipleResultsFound.
+                    existing = db.execute(
+                        select(CVESignature).where(CVESignature.cve_id == cve_id)
+                    ).scalars().first()
 
-                if existing:
-                    existing.pattern       = p["pattern"]
-                    existing.severity      = p.get("severity", "MEDIUM")
-                    existing.cvss          = p.get("cvss", 0.0)
-                    existing.active        = True
-                    existing.modified_at   = datetime.now(timezone.utc)
-                else:
-                    db.add(CVESignature(
-                        cve_id           = cve_id,
-                        name             = p.get("name", cve_id),
-                        description      = p.get("description", ""),
-                        pattern          = p["pattern"],
-                        flags            = p.get("flags", ""),
-                        severity         = p.get("severity", "MEDIUM"),
-                        cvss             = p.get("cvss", 0.0),
-                        affected_product = p.get("affected_product", ""),
-                        active           = True,
-                        source           = p.get("source", "unknown"),
-                    ))
-                    db.flush()  # make this row visible to subsequent SELECTs in the session
-                count += 1
+                    if existing:
+                        existing.pattern       = p["pattern"]
+                        existing.severity      = p.get("severity", "MEDIUM")
+                        existing.cvss          = p.get("cvss", 0.0)
+                        existing.active        = True
+                        existing.modified_at   = datetime.now(timezone.utc)
+                    else:
+                        db.add(CVESignature(
+                            cve_id           = cve_id,
+                            name             = p.get("name", cve_id),
+                            description      = p.get("description", ""),
+                            pattern          = p["pattern"],
+                            flags            = p.get("flags", ""),
+                            severity         = p.get("severity", "MEDIUM"),
+                            cvss             = p.get("cvss", 0.0),
+                            affected_product = p.get("affected_product", ""),
+                            active           = True,
+                            source           = p.get("source", "unknown"),
+                        ))
+                        db.flush()  # make this row visible to subsequent SELECTs in the session
+                    count += 1
 
-            db.commit()
+                db.commit()
 
         return count
 
