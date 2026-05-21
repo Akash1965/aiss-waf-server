@@ -1,0 +1,31 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+sqlalchemy>=2.0.36
+duckdb>=1.0.0              # embedded OLAP database
+duckdb-engine>=0.13.0      # SQLAlchemy dialect for DuckDB
+alembic>=1.14.0
+pydantic>=2.11.0
+pydantic-settings>=2.7.0
+httpx>=0.27.0
+prometheus-fastapi-instrumentator>=7.0.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+aiofiles>=23.2.1
+python-multipart>=0.0.9
+structlog>=24.1.0
+
+# ── Apache Doris (MySQL-protocol connection) ──────────────────────────────────
+pymysql>=1.1.0             # Doris speaks MySQL wire protocol on port 9030
+cryptography>=43.0.0       # pymysql TLS support
+pytz>=2024.1               # required by DuckDB's Python extension loader
+
+# ── gRPC telemetry / CVE streaming ───────────────────────────────────────────
+grpcio>=1.65.0             # async gRPC server (grpc.aio)
+grpcio-tools>=1.65.0       # protoc plugin — regenerate stubs with proto/generate.sh
+protobuf>=5.27.0           # protobuf runtime
+
+# ── ML model export (used by scripts/train_model.py) ─────────────────────────
+scikit-learn>=1.5.0        # GradientBoostingClassifier training
+numpy>=1.26.0
+onnx>=1.16.0               # ONNX graph format
+skl2onnx>=1.17.0           # sklearn → ONNX converter

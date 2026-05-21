@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# DuckDB data files — never commit database files
+*.duckdb
+*.duckdb.wal
+/data/
+
+# Environment secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Certs — generated locally, not committed
+/certs/*.key
+/certs/*.crt
+/certs/*.pem
+/certs/*.p12
+/certs/ca.*
+!/certs/.gitkeep
+
+# Docker
+docker-compose.override.yml
+
+# macOS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Tunnel
+/tmp/
+cloudflared_output.log
+aiss_tunnel*.txt
+aiss_tunnel*.pid
+
+# Node (dashboard)
+node_modules/
+.next/

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package aiss;
+
+option go_package = "github.com/aiss/proto;aiss";
+
+// ─── Service definition ────────────────────────────────────────────────────
+service AISS {
+  // Agent sends a batch of security events to the server
+  rpc SubmitTelemetry (TelemetryRequest) returns (TelemetryAck);
+  // Server streams CVE signature updates to the agent
+  rpc GetCVEUpdates   (CVEUpdateRequest) returns (stream CVESignature);
+  // Agent registers itself with the central server
+  rpc RegisterAgent   (AgentInfo)        returns (AgentAck);
+}
+
+// ─── Telemetry ─────────────────────────────────────────────────────────────
+message SecurityEvent {
+  string request_id   = 1;
+  string agent_id     = 2;
+  string client_ip    = 3;
+  string method       = 4;
+  string uri          = 5;
+  string action       = 6;  // BLOCK | PERMIT
+  int32  tier         = 7;
+  string cve_id       = 8;
+  string rule_name    = 9;
+  string reason       = 10;
+  float  ml_score     = 11;
+  float  latency_ms   = 12;
+  string server_type  = 13;
+  string created_at   = 14;
+}
+
+message TelemetryRequest {
+  repeated SecurityEvent events = 1;
+}
+
+message TelemetryAck {
+  int32  accepted = 1;
+  string message  = 2;
+}
+
+// ─── CVE Updates ───────────────────────────────────────────────────────────
+message CVEUpdateRequest {
+  string agent_id = 1;
+  string since    = 2;  // ISO-8601 timestamp — only return sigs modified after this
+}
+
+message CVESignature {
+  int64  id               = 1;
+  string cve_id           = 2;
+  string name             = 3;
+  string pattern          = 4;
+  string flags            = 5;
+  string severity         = 6;
+  float  cvss             = 7;
+  string affected_product = 8;
+  bool   active           = 9;
+  string modified_at      = 10;
+}
+
+// ─── Agent registration ────────────────────────────────────────────────────
+message AgentInfo {
+  string id          = 1;
+  string hostname    = 2;
+  string ip          = 3;
+  string server_type = 4;
+  string version     = 5;
+  string mode        = 6;
+  string api_key     = 7;
+}
+
+message AgentAck {
+  bool   ok      = 1;
+  string message = 2;
+}

@@ -1,0 +1,44 @@
+# Render Infrastructure-as-Code — AISS WAF Server
+# Free tier: web service + ephemeral DuckDB storage
+# Deploy: connect this repo at https://dashboard.render.com/new/from-repo
+#
+# CVE signatures re-sync from NVD on every startup (~60 s).
+# Security events persist in /tmp/aiss.duckdb for the life of the container.
+
+services:
+  - type: web
+    name: aiss-server
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # DuckDB — use /tmp so the file survives restarts (wiped only on redeploy)
+      - key: AISS_DATABASE_URL
+        value: duckdb:////tmp/aiss.duckdb
+
+      - key: AISS_ENVIRONMENT
+        value: production
+
+      # 256-bit HMAC secret — used for audit chain + JWT signing
+      - key: AISS_SECRET_KEY
+        generateValue: true
+
+      # HS256 is simpler on free infra (RS256 needs RSA key pair)
+      - key: AISS_ALGORITHM
+        value: HS256
+
+      # CORS — allow dashboard + forum (update if you add more frontends)
+      - key: AISS_ALLOWED_ORIGINS
+        value: '["https://nit-mca-forum.vercel.app","https://aiss-dashboard.vercel.app","http://localhost:3000"]'
+
+      - key: AISS_RATE_LIMIT_PER_MINUTE
+        value: "300"
+
+      - key: ENABLE_METRICS
+        value: "true"
+
+      # Doris not available on free tier — server handles missing Doris gracefully
+      - key: AISS_DORIS_HOST
+        value: ""
