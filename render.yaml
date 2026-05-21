@@ -13,6 +13,8 @@ services:
     dockerContext: ./server
     plan: free
     healthCheckPath: /health
+    # Render injects $PORT — override the Dockerfile's hardcoded 8080
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --loop uvloop --access-log"
     envVars:
       # DuckDB — use /tmp so the file survives restarts (wiped only on redeploy)
       - key: AISS_DATABASE_URL

@@ -24,8 +24,6 @@ grpcio>=1.65.0             # async gRPC server (grpc.aio)
 grpcio-tools>=1.65.0       # protoc plugin — regenerate stubs with proto/generate.sh
 protobuf>=5.27.0           # protobuf runtime
 
-# ── ML model export (used by scripts/train_model.py) ─────────────────────────
-scikit-learn>=1.5.0        # GradientBoostingClassifier training
-numpy>=1.26.0
-onnx>=1.16.0               # ONNX graph format
-skl2onnx>=1.17.0           # sklearn → ONNX converter
+# ── ML model export (train_model.py only — not needed at runtime) ────────────
+# Install locally with: pip install scikit-learn numpy onnx skl2onnx
+# Excluded here to keep Render build fast (<5 min)
