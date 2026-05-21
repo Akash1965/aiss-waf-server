@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, SessionLocal, _db_lock
 from app.cve_sync import CVESyncWorker
 from app.doris import event_writer
 from app.grpc_server import serve_grpc
@@ -55,11 +55,57 @@ structlog.configure(
 log = structlog.get_logger(__name__)
 
 
+# ── Bootstrap admin key ───────────────────────────────────────────────────────
+
+def _seed_bootstrap_key() -> None:
+    """Create an initial admin API key on first startup (production only).
+
+    Uses settings.secret_key (Render's AISS_SECRET_KEY) as the bootstrap
+    credential so the operator can authenticate immediately after deploy.
+    Skipped when any active admin key already exists in the DB.
+    """
+    if settings.environment == "development":
+        return  # Dev mode accepts any key — no seeding needed
+
+    from app.models import APIKey
+    from app.auth import hash_api_key
+    from sqlalchemy import select
+
+    with _db_lock:
+        with SessionLocal() as db:
+            existing = db.execute(
+                select(APIKey).where(
+                    APIKey.role == "admin",
+                    APIKey.active.is_(True),
+                )
+            ).scalars().first()
+
+            if existing:
+                log.info("Bootstrap key already present — skipping seed")
+                return
+
+            bootstrap_key = settings.secret_key
+            db.add(APIKey(
+                agent_id    = "bootstrap-admin",
+                key_hash    = hash_api_key(bootstrap_key),
+                description = "Bootstrap admin key (value = AISS_SECRET_KEY env var)",
+                role        = "admin",
+                active      = True,
+            ))
+            db.commit()
+
+    log.info(
+        "Bootstrap admin key seeded — use AISS_SECRET_KEY value as X-API-Key",
+        hint="Set X-API-Key: <AISS_SECRET_KEY value> to authenticate",
+    )
+
+
 # ── Application lifespan ──────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("AISS server starting", version="1.0.0", env=settings.environment)
     await init_db()
+    _seed_bootstrap_key()
 
     # Start Doris batch writer (security events flushed every 1 s or 5 000 events)
     await event_writer.start()
