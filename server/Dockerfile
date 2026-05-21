@@ -31,9 +31,10 @@ RUN python -m grpc_tools.protoc \
 # Persistent DuckDB data directory + ONNX model mount point
 RUN mkdir -p /data /etc/aiss/ml
 
-# Health probe
+# Health probe — uses ${PORT:-8080} so it works on Render (PORT injected)
+# and locally (falls back to 8080).  Shell form is required for env expansion.
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
-    CMD curl -sf http://localhost:8080/health || exit 1
+    CMD curl -sf http://localhost:${PORT:-8080}/health || exit 1
 
 ENV AISS_ENVIRONMENT=production \
     AISS_HOST=0.0.0.0 \
@@ -45,10 +46,6 @@ EXPOSE 8080
 EXPOSE 50051
 
 # Single worker required: DuckDB allows only one write process per file.
-# All request threads share one in-process DuckDB connection via StaticPool.
-CMD ["uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8080", \
-     "--workers", "1", \
-     "--loop", "uvloop", \
-     "--access-log"]
+# Shell form (not JSON array) so ${PORT:-8080} is expanded at runtime.
+# Render injects $PORT; local Docker falls back to 8080.
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --loop uvloop --access-log
