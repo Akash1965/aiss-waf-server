@@ -153,18 +153,29 @@ def _lookup_api_key(raw_key: str) -> tuple[str, str]:
     """
     Validate raw API key against DB.
     Returns (actor, role).  Raises HTTPException if invalid.
+
+    Bootstrap shortcut: AISS_SECRET_KEY always grants admin access so the
+    operator can authenticate on a fresh deployment before any DB keys exist.
+    This also fixes a missing _db_lock around SessionLocal (StaticPool requires
+    serialised access to the shared DuckDB connection).
     """
-    from app.database import SessionLocal
+    from app.database import SessionLocal, _db_lock
     from app.models import APIKey
     from sqlalchemy import select
 
+    # Bootstrap: secret_key works as an admin credential without a DB lookup.
+    # Lets the operator authenticate immediately on a fresh deployment.
+    if raw_key == settings.secret_key:
+        return "bootstrap-admin", "admin"
+
     key_hash = hash_api_key(raw_key)
-    with SessionLocal() as db:
-        stmt = select(APIKey).where(
-            APIKey.key_hash == key_hash,
-            APIKey.active.is_(True),
-        )
-        row = db.execute(stmt).scalar_one_or_none()
+    with _db_lock:
+        with SessionLocal() as db:
+            stmt = select(APIKey).where(
+                APIKey.key_hash == key_hash,
+                APIKey.active.is_(True),
+            )
+            row = db.execute(stmt).scalars().first()
 
     if not row:
         raise HTTPException(
