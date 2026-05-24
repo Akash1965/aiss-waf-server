@@ -364,27 +364,28 @@ class CVESyncWorker:
         # within one sync pass would otherwise cause a bulk-INSERT constraint error).
         seen_in_batch: set[str] = set()
 
-        with _db_lock:
-            with SessionLocal() as db:
-                for p in patterns:
-                    if not p.get("pattern") or not p.get("cve_id"):
-                        continue
+        # Process each pattern in its own short-lived lock window so incoming
+        # requests (auth lookups, inspect calls) can interleave between CVEs.
+        # Holding _db_lock for the entire batch of 1000+ CVEs starves request
+        # handlers waiting on the same lock.
+        for p in patterns:
+            if not p.get("pattern") or not p.get("cve_id"):
+                continue
 
-                    cve_id = p["cve_id"]
-                    if cve_id in seen_in_batch:
-                        continue
-                    seen_in_batch.add(cve_id)
+            cve_id = p["cve_id"]
+            if cve_id in seen_in_batch:
+                continue
+            seen_in_batch.add(cve_id)
 
-                    # Validate regex before storing
-                    try:
-                        re.compile(p["pattern"])
-                    except re.error:
-                        log.warning("Invalid regex skipped", cve_id=cve_id)
-                        continue
+            # Validate regex before touching the DB
+            try:
+                re.compile(p["pattern"])
+            except re.error:
+                log.warning("Invalid regex skipped", cve_id=cve_id)
+                continue
 
-                    # Dialect-agnostic upsert: use .scalars().first() instead of
-                    # scalar_one_or_none() — DuckDB can return duplicate rows during
-                    # an incomplete flush; scalar_one_or_none() raises MultipleResultsFound.
+            with _db_lock:
+                with SessionLocal() as db:
                     existing = db.execute(
                         select(CVESignature).where(CVESignature.cve_id == cve_id)
                     ).scalars().first()
@@ -408,10 +409,8 @@ class CVESyncWorker:
                             active           = True,
                             source           = p.get("source", "unknown"),
                         ))
-                        db.flush()  # make this row visible to subsequent SELECTs in the session
-                    count += 1
-
-                db.commit()
+                    db.commit()
+            count += 1
 
         return count
 

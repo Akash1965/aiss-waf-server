@@ -357,6 +357,36 @@ _HEURISTIC_PATTERNS = [
     # ── Format String Attacks (A10) ───────────────────────────────────────────
     # Three or more consecutive printf-style format specifiers, or %n write
     (re.compile(r"(?:%[diouxXeEfFgGaAcsSp]){3,}|%n",        re.IGNORECASE), "FORMAT-STRING"),
+
+    # ── Python format-string SSTI ({0.__class__.__mro__}) ─────────────────────
+    # Legitimate requests do not use Python object attribute traversal via {}.
+    # {0.__class__}, {self.__dict__}, {config.__init__} are all SSTI probes.
+    (re.compile(r"\{[0-9a-zA-Z_]*\.__(?:class|dict|mro|bases|subclasses|"
+                r"globals|init|import|builtins|module)\b",
+                re.IGNORECASE), "SSTI-PYTHON-FORMAT"),
+
+    # ── Java serialization magic bytes in hex form (aced0005…) ────────────────
+    # Raw Java serialized streams start with 0xACED 0x0005. Attackers sometimes
+    # send them hex-encoded in query params.
+    (re.compile(r"\baced[0-9a-f]{4}[0-9a-f]{2,}",           re.IGNORECASE), "DESER-JAVA-HEX"),
+
+    # ── Prototype pollution via bracket notation in query string ───────────────
+    # constructor[prototype][field]=x  /  [prototype][field]=x
+    (re.compile(r"constructor\[prototype\]|\[prototype\]\[", re.IGNORECASE), "PROTO-POLLUTION-CHAIN"),
+
+    # ── Default credentials in JSON body (A02/A07) ─────────────────────────────
+    # {"password":"admin"}, {"password":"root"}, {"password":"123456"}, etc.
+    (re.compile(r'"password"\s*:\s*"(?:admin|root|password|123456|pass|'
+                r'p@ssw0rd|letmein|welcome|guest|test|qwerty|abc123)"',
+                re.IGNORECASE), "DEFAULT-CREDS-JSON"),
+
+    # ── Null-byte injection (LDAP / file path truncation) ─────────────────────
+    # %00 URL-encoded or literal null (\x00) used to terminate strings early.
+    (re.compile(r"%00|\x00",                                 0),            "NULL-BYTE-INJECT"),
+
+    # ── UTF-8 overlong path traversal (%c0%af, %c1%9c, %e0%80%af) ─────────────
+    # Overlong multi-byte encodings of '/' used to bypass simple ../  filters.
+    (re.compile(r"%c0%af|%c1%9c|%e0%80%af|%c0%2f|%c0%5c",  re.IGNORECASE), "PATH-TRAVERSAL-OVERLONG"),
 ]
 
 # Static file extensions that are never threat-bearing — skip inspection for speed
