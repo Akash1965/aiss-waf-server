@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package aiss.v1;
+
+option go_package = "github.com/aiss/agent/proto/gen/go;aissv1";
+option java_package = "com.aiss.v1";
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message TelemetryEvent {
+  string request_id  = 1;
+  string agent_id    = 2;
+  string client_ip   = 3;
+  string method      = 4;
+  string uri         = 5;
+  string action      = 6;  // "PERMIT" | "BLOCK"
+  int32  tier        = 7;
+  string cve_id      = 8;
+  string rule_name   = 9;
+  string reason      = 10;
+  double ml_score    = 11;
+  double latency_ms  = 12;
+  string server_type = 13;
+  int64  timestamp   = 14;  // Unix millis
+}
+
+message TelemetryBatch {
+  repeated TelemetryEvent events = 1;
+}
+
+message TelemetryAck {
+  int32  accepted = 1;
+  string message  = 2;
+}
+
+message UpdateRequest {
+  string agent_id   = 1;
+  string since      = 2;  // RFC3339 — only return CVEs modified after this
+  string api_key    = 3;
+}
+
+message CVESignature {
+  int32  id               = 1;
+  string cve_id           = 2;
+  string name             = 3;
+  string pattern          = 4;
+  string flags            = 5;
+  string severity         = 6;
+  double cvss             = 7;
+  string affected_product = 8;
+  bool   active           = 9;
+  string modified_at      = 10;
+}
+
+message AgentInfo {
+  string id          = 1;
+  string hostname    = 2;
+  string ip          = 3;
+  string server_type = 4;
+  string version     = 5;
+  string mode        = 6;
+  string api_key     = 7;
+}
+
+message AgentAck {
+  bool   ok      = 1;
+  string message = 2;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service AISS {
+  // Agent → Server: batch telemetry events
+  rpc SubmitTelemetry(TelemetryBatch) returns (TelemetryAck);
+
+  // Agent → Server (streaming): get CVE signature delta
+  rpc GetCVEUpdates(UpdateRequest) returns (stream CVESignature);
+
+  // Agent → Server: register or heartbeat
+  rpc RegisterAgent(AgentInfo) returns (AgentAck);
+}

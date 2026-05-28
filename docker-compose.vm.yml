@@ -1,0 +1,32 @@
+# ── VM-mode override for Doris BE ─────────────────────────────────────────────
+#
+# Use this file when the Doris BE runs inside a UTM (or other) x86_64 VM
+# instead of as a local Docker container (e.g. on Apple Silicon where the
+# x86_64 BE binary crashes under QEMU emulation).
+#
+# Usage:
+#   1. Run setup_utm_be.sh to provision the VM and generate .env.vm
+#   2. Start the stack:
+#        docker compose -f docker-compose.yml -f docker-compose.vm.yml \
+#                       --env-file .env.vm up --build --detach
+#
+# The override does three things:
+#   • Removes doris-init's dependency on doris-be (BE is external now)
+#   • Routes AISS_DORIS_BE_HOST to the VM IP via the DORIS_BE_HOST env var
+#   • Opens the doris-fe MySQL port to the host so the VM can register with it
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # Tell aiss-server where the external BE lives.
+  # DORIS_BE_HOST is read from .env.vm (set by setup_utm_be.sh).
+  aiss-server:
+    environment:
+      - AISS_DORIS_BE_HOST=${DORIS_BE_HOST}
+      - AISS_DORIS_BE_PORT=${DORIS_BE_PORT:-8040}
+
+  # doris-init does not depend on a local BE.
+  doris-init:
+    depends_on:
+      doris-fe:
+        condition: service_healthy

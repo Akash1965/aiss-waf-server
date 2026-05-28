@@ -1,0 +1,167 @@
+[
+  {
+    "id": 1,
+    "cve_id": "CVE-2021-44228",
+    "name": "Log4Shell JNDI Injection",
+    "severity": "CRITICAL",
+    "cvss": 10.0,
+    "pattern": "\\$\\{jndi:(ldap|rmi|dns|ldaps|iiop|corba|nds|http)s?://",
+    "flags": "CASELESS",
+    "affected_product": "log4j",
+    "description": "Log4j2 JNDI injection via LDAP/RMI/DNS lookups"
+  },
+  {
+    "id": 2,
+    "cve_id": "CVE-2021-44228",
+    "name": "Log4Shell Obfuscated",
+    "severity": "CRITICAL",
+    "cvss": 10.0,
+    "pattern": "\\$\\{\\$\\{(lower|upper):[^}]+\\}",
+    "flags": "CASELESS",
+    "affected_product": "log4j",
+    "description": "Obfuscated Log4Shell using nested expressions"
+  },
+  {
+    "id": 3,
+    "cve_id": "CVE-2022-22965",
+    "name": "Spring4Shell ClassLoader",
+    "severity": "CRITICAL",
+    "cvss": 9.8,
+    "pattern": "class\\.module\\.classLoader|class\\[module\\]\\[classLoader\\]",
+    "flags": "CASELESS",
+    "affected_product": "spring-framework",
+    "description": "Spring Framework classLoader manipulation for RCE"
+  },
+  {
+    "id": 4,
+    "cve_id": "CVE-2014-6271",
+    "name": "Shellshock Bash Injection",
+    "severity": "CRITICAL",
+    "cvss": 10.0,
+    "pattern": "\\(\\)\\s*\\{\\s*[^}]*\\};\\s*",
+    "flags": "",
+    "affected_product": "bash",
+    "description": "Shellshock vulnerability in bash function definitions"
+  },
+  {
+    "id": 5,
+    "cve_id": "CVE-2017-5638",
+    "name": "Struts2 OGNL Injection",
+    "severity": "CRITICAL",
+    "cvss": 10.0,
+    "pattern": "%\\{#_memberAccess|OgnlContext|@java\\.lang\\.Runtime@",
+    "flags": "CASELESS",
+    "affected_product": "struts2",
+    "description": "Apache Struts2 OGNL expression injection"
+  },
+  {
+    "id": 6,
+    "cve_id": "CVE-2017-9841",
+    "name": "PHPUnit eval-stdin RCE",
+    "severity": "CRITICAL",
+    "cvss": 9.8,
+    "pattern": "vendor/phpunit/phpunit/src/Util/PHP/eval-stdin\\.php",
+    "flags": "CASELESS",
+    "affected_product": "phpunit",
+    "description": "PHPUnit eval-stdin.php remote code execution"
+  },
+  {
+    "id": 7,
+    "cve_id": "CVE-2019-11043",
+    "name": "PHP-FPM Path Underflow",
+    "severity": "CRITICAL",
+    "cvss": 9.8,
+    "pattern": "\\.(php|phtml)/[^\\s]*\\?",
+    "flags": "CASELESS",
+    "affected_product": "php-fpm",
+    "description": "Nginx + PHP-FPM path underflow RCE"
+  },
+  {
+    "id": 8,
+    "cve_id": "CVE-2023-44487",
+    "name": "HTTP/2 Rapid Reset",
+    "severity": "HIGH",
+    "cvss": 7.5,
+    "pattern": "RST_STREAM",
+    "flags": "",
+    "affected_product": "http2",
+    "description": "HTTP/2 rapid reset DDoS attack pattern"
+  },
+  {
+    "id": 9,
+    "cve_id": "CVE-2021-41773",
+    "name": "Apache Path Traversal",
+    "severity": "CRITICAL",
+    "cvss": 7.5,
+    "pattern": "\\.%2e/|\\.%2E/|%2e\\./|%2E\\./",
+    "flags": "CASELESS",
+    "affected_product": "apache-httpd",
+    "description": "Apache HTTP Server path traversal and RCE"
+  },
+  {
+    "id": 10,
+    "cve_id": "CVE-2021-42013",
+    "name": "Apache Path Traversal v2",
+    "severity": "CRITICAL",
+    "cvss": 9.8,
+    "pattern": "\\.%%32%65/|%%32%65\\./",
+    "flags": "CASELESS",
+    "affected_product": "apache-httpd",
+    "description": "Apache HTTP Server path traversal (bypass of CVE-2021-41773 fix)"
+  },
+  {
+    "id": 11,
+    "cve_id": "CVE-2020-1938",
+    "name": "Ghostcat AJP LFI",
+    "severity": "CRITICAL",
+    "cvss": 9.8,
+    "pattern": "ajp://|AJP/1\\.3",
+    "flags": "CASELESS",
+    "affected_product": "tomcat",
+    "description": "Apache Tomcat AJP connector local file inclusion"
+  },
+  {
+    "id": 12,
+    "cve_id": "GENERIC-SQLI",
+    "name": "SQL Injection Basic",
+    "severity": "HIGH",
+    "cvss": 8.0,
+    "pattern": "(?i)(union\\s+select|or\\s+1\\s*=\\s*1|and\\s+1\\s*=\\s*1|drop\\s+table|insert\\s+into|delete\\s+from|exec\\s*\\(|xp_cmdshell)",
+    "flags": "CASELESS",
+    "affected_product": "generic",
+    "description": "Common SQL injection patterns"
+  },
+  {
+    "id": 13,
+    "cve_id": "GENERIC-XSS",
+    "name": "Cross-Site Scripting Basic",
+    "severity": "HIGH",
+    "cvss": 6.5,
+    "pattern": "<script[^>]*>|javascript:|on(load|error|click|mouseover|focus)\\s*=",
+    "flags": "CASELESS",
+    "affected_product": "generic",
+    "description": "Common XSS patterns in HTTP parameters"
+  },
+  {
+    "id": 14,
+    "cve_id": "GENERIC-CMDINJECTION",
+    "name": "OS Command Injection",
+    "severity": "CRITICAL",
+    "cvss": 9.0,
+    "pattern": ";\\s*(cat|ls|id|whoami|wget|curl|bash|sh|python|perl|php)\\s",
+    "flags": "CASELESS",
+    "affected_product": "generic",
+    "description": "Common OS command injection via shell metacharacters"
+  },
+  {
+    "id": 15,
+    "cve_id": "GENERIC-PATHTRAV",
+    "name": "Path Traversal Generic",
+    "severity": "HIGH",
+    "cvss": 7.5,
+    "pattern": "\\.\\./\\.\\./|\\.\\.%2f\\.\\.|%2e%2e%2f",
+    "flags": "CASELESS",
+    "affected_product": "generic",
+    "description": "Directory traversal attack patterns"
+  }
+]

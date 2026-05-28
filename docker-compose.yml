@@ -1,0 +1,268 @@
+services:
+
+  # ── Apache Doris — FE (Frontend / query coordinator) ─────────────────────────
+  # Doris uses MySQL protocol on port 9030.  Connect with any MySQL client:
+  #   mysql -h 127.0.0.1 -P 9030 -u root --prompt="doris> "
+  # Fixed IP 172.20.0.10 on doris-net: Doris init scripts validate dotted-IP in FE_SERVERS.
+  # Also connected to aiss-net so that aiss-server can resolve "doris-fe" by hostname.
+  doris-fe:
+    image: apache/doris:fe-4.1.1
+    platform: linux/amd64
+    container_name: aiss-doris-fe
+    hostname: doris-fe
+    restart: unless-stopped
+    environment:
+      - FE_SERVERS=fe1:172.20.0.10:9010
+      - FE_ID=1
+    ports:
+      - "8030:8030"   # FE HTTP
+      - "9030:9030"   # MySQL protocol (clients connect here)
+    volumes:
+      - doris-fe-data:/opt/apache-doris/fe/doris-meta
+      - doris-fe-log:/opt/apache-doris/fe/log
+    networks:
+      doris-net:
+        ipv4_address: 172.20.0.10
+      aiss-net: {}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8030/api/bootstrap"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ── Apache Doris — BE (Backend / storage + compute) ──────────────────────────
+  # Profile "local-be": starts the BE container locally (x86_64 hosts only).
+  # On Apple Silicon run without this profile and use a UTM VM instead:
+  #   docker compose --profile local-be up        → x86_64 (local BE)
+  #   docker compose up                           → arm64  (VM BE, see docker-compose.vm.yml)
+  doris-be:
+    profiles: [local-be]
+    image: apache/doris:be-4.1.1
+    platform: linux/amd64
+    container_name: aiss-doris-be
+    hostname: doris-be
+    restart: unless-stopped
+    environment:
+      - FE_MASTER_IP=172.20.0.10
+      - BE_IP=172.20.0.11
+      - BE_PORT=9050
+    ports:
+      - "8040:8040"   # BE HTTP (Stream Load endpoint)
+      - "9050:9050"   # BE heartbeat
+    volumes:
+      - doris-be-data:/opt/apache-doris/be/storage
+      - doris-be-log:/opt/apache-doris/be/log
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+    networks:
+      doris-net:
+        ipv4_address: 172.20.0.11
+      aiss-net: {}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8040/api/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 120s
+
+  # ── Doris schema initialiser (runs once, then exits) ─────────────────────────
+  doris-init:
+    image: mysql:8.0
+    platform: linux/amd64
+    container_name: aiss-doris-init
+    restart: "no"
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+    networks:
+      - doris-net
+    volumes:
+      - ./server/db/doris_schema.sql:/doris_schema.sql:ro
+    command: >
+      sh -c "
+        echo 'Waiting for Doris FE MySQL port...';
+        until mysql -h 172.20.0.10 -P 9030 -u root --connect-timeout=5 -e 'SHOW FRONTENDS' > /dev/null 2>&1; do
+          sleep 5;
+        done;
+        echo 'Running Doris schema init (errors ignored when no BE is available)...';
+        mysql -h 172.20.0.10 -P 9030 -u root < /doris_schema.sql 2>&1 || true;
+        echo 'Doris schema init complete (some tables may require a BE to be created).'
+      "
+
+  # ── AISS Go Agent (DuckDB local store + security pipeline) ───────────────────
+  aiss-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aiss-agent
+    restart: unless-stopped
+    volumes:
+      - aiss-data:/var/lib/aiss
+      - ./rules:/app/rules:ro
+      - aiss-socket:/tmp
+      - ./certs:/certs:ro          # mTLS — agent cert for gRPC client auth
+    environment:
+      - AISS_MODE=enforce
+      - AISS_LOG_LEVEL=debug
+      - AISS_SERVER_URL=http://aiss-server:8080
+      - AISS_GRPC_ADDR=aiss-server:50051
+      - AISS_CERT_DIR=/certs
+      - AISS_CA_CERT=/certs/ca.crt
+      - AISS_CLIENT_CERT=/certs/aiss-agent.crt
+      - AISS_CLIENT_KEY=/certs/aiss-agent.key
+    networks:
+      - aiss-net
+    healthcheck:
+      test: ["CMD", "test", "-S", "/tmp/aiss.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Dummy target server (simulates a real company's web app) ─────────────────
+  dummy-server:
+    build:
+      context: ./dummy-server
+      dockerfile: Dockerfile
+    container_name: aiss-dummy-server
+    restart: unless-stopped
+    networks:
+      - aiss-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── WAF Proxy (consults AISS socket, proxies clean traffic to dummy-server) ──
+  waf-proxy:
+    build:
+      context: ./waf-proxy
+      dockerfile: Dockerfile
+    container_name: aiss-waf-proxy
+    restart: unless-stopped
+    environment:
+      - AISS_SOCKET_PATH=/tmp/aiss.sock
+      - BACKEND_URL=https://nit-mca-forum.vercel.app
+      - AISS_SERVER_URL=http://aiss-server:8080
+      - AISS_API_KEY=waf-proxy-demo
+      - AISS_AGENT_ID=waf-proxy-demo
+      - PORT=8888
+      # mTLS — WAF proxy presents its cert when calling aiss-server
+      - AISS_CA_CERT=/certs/ca.crt
+      - AISS_CLIENT_CERT=/certs/waf-proxy.crt
+      - AISS_CLIENT_KEY=/certs/waf-proxy.key
+    volumes:
+      - aiss-socket:/tmp
+      - ./certs:/certs:ro          # mTLS certs
+    depends_on:
+      aiss-agent:
+        condition: service_healthy
+      dummy-server:
+        condition: service_healthy
+    networks:
+      - aiss-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8888/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Nginx (TLS 1.3 gateway + WAF proxy) ──────────────────────────────────────
+  # Singapore IM8 / MAS TRM compliant:
+  #   - TLS 1.3 (TLS 1.2 minimum) with ECDHE + AES-256-GCM / CHACHA20
+  #   - HSTS max-age=63072000 (2 years)
+  #   - OCSP stapling, session tickets disabled (PFS)
+  #   - ECDSA P-384 certificate signed by AISS Root CA
+  nginx:
+    build:
+      context: ./module/nginx
+      dockerfile: Dockerfile
+    container_name: aiss-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro   # TLS certificates (ECDSA P-384)
+    depends_on:
+      waf-proxy:
+        condition: service_healthy
+    networks:
+      - aiss-net
+
+  # ── AISS Central Server (FastAPI + gRPC + DuckDB + Doris) ────────────────────
+  # Primary analytics storage is Apache Doris.
+  # A local DuckDB file is kept as a hot cache for the CVE signature endpoint.
+  #
+  # Stream-Load endpoint for Doris:  http://doris-be:8040/api/aiss/security_events/_stream_load
+  # MySQL query endpoint for Doris:  mysql -h doris-fe -P 9030 -u root
+  aiss-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: aiss-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # FastAPI / REST
+      - "50051:50051" # gRPC
+    environment:
+      - AISS_DATABASE_URL=duckdb:////data/aiss.duckdb
+      - AISS_ENVIRONMENT=development
+      - AISS_DORIS_HOST=doris-fe
+      - AISS_DORIS_PORT=9030
+      - AISS_DORIS_USER=root
+      - AISS_DORIS_PASSWORD=
+      - AISS_DORIS_DATABASE=aiss
+      - AISS_DORIS_BE_HOST=${DORIS_BE_HOST:-doris-be}
+      - AISS_DORIS_BE_PORT=${DORIS_BE_PORT:-8040}
+      - AISS_GRPC_PORT=50051
+      # Security — auto-generated 256-bit secret (override in production via secrets manager)
+      - AISS_SECRET_KEY=${AISS_SECRET_KEY:-$(openssl rand -hex 32 2>/dev/null || echo "CHANGE_ME_set_AISS_SECRET_KEY_env_var")}
+      # Prometheus metrics (required for /metrics endpoint)
+      - ENABLE_METRICS=true
+      # Rate limiting (requests per minute per IP)
+      - AISS_RATE_LIMIT_PER_MINUTE=300
+      # JWT algorithm (RS256 for production; HS256 for dev)
+      - AISS_ALGORITHM=RS256
+      # mTLS — server certificate paths (used by gRPC server)
+      - AISS_CERT_DIR=/certs
+      # CORS — allowed origins for browser clients (dashboard + Vercel middleware)
+      # Override in production: AISS_ALLOWED_ORIGINS='["https://nit-mca-forum.vercel.app","http://localhost:3000"]'
+      - AISS_ALLOWED_ORIGINS=${AISS_ALLOWED_ORIGINS:-["https://nit-mca-forum.vercel.app","http://localhost:3000","http://localhost:8080"]}
+    volumes:
+      - aiss-db:/data
+      - ./certs:/certs:ro          # mTLS certs for gRPC server
+    networks:
+      - aiss-net
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  aiss-data:      # Go agent DuckDB cache + rules
+  aiss-db:        # Central server DuckDB (CVE hot-cache, agent registry)
+  aiss-socket:    # Unix socket IPC between Nginx and agent
+  doris-fe-data:  # Doris FE metadata
+  doris-fe-log:
+  doris-be-data:  # Doris BE storage
+  doris-be-log:
+
+networks:
+  aiss-net:
+    driver: bridge
+  doris-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

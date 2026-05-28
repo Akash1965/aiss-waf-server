@@ -1,0 +1,23 @@
+# AISS Agent — local development config
+# Run with: ./aiss-agent --config aiss.dev.conf
+# NOTE: .properties format — no quotes around values
+
+agent_id    = aiss-dev-local
+mode        = shadow
+socket_path = /tmp/aiss.sock
+
+db_path     = /tmp/aiss_agent_dev.db
+log_level   = debug
+
+patterns_file = ./rules/hyperscan/cve_patterns.json
+rules_dir     = ./rules/yara
+
+ml_block_threshold    = 0.85
+verdict_cache_ttl     = 60s
+socket_timeout_ms     = 10
+max_workers           = 8
+telemetry_batch_size  = 100
+telemetry_flush_sec   = 5.0
+
+server_url  = http://localhost:8080
+api_key     = YOUR_API_KEY_HERE

@@ -36,6 +36,13 @@ env/
 # Docker
 docker-compose.override.yml
 
+# Compiled binaries (built by `make build` into dist/)
+/aiss-agent
+/dist/
+
+# Local dev config contains API keys — use aiss.dev.conf.example instead
+aiss.dev.conf
+
 # macOS
 .DS_Store
 Thumbs.db
